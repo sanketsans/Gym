@@ -106,7 +106,9 @@ echo "Submitted batch job 999"
 """
 
 
-def _run_prologue(tmp_path, resume: ResumeConfig, prev_state: str | None) -> subprocess.CompletedProcess:
+def _run_prologue(
+    tmp_path, resume: ResumeConfig, prev_state: str | None, *, prev_job_id: str = "100"
+) -> subprocess.CompletedProcess:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     for name, body in (("sacct", _FAKE_SACCT), ("sbatch", _FAKE_SBATCH), ("sleep", "#!/bin/bash\n")):
@@ -115,7 +117,7 @@ def _run_prologue(tmp_path, resume: ResumeConfig, prev_state: str | None) -> sub
         tool.chmod(0o755)
     script = tmp_path / "job.sh"
     script.write_text(render_resume_prologue(resume) + "\necho REACHED_WORK\n")
-    args = ["bash", str(script)] + ([] if prev_state is None else ["100"])
+    args = ["bash", str(script)] + ([] if prev_state is None else [prev_job_id])
     env = {
         "PATH": f"{bin_dir}:/usr/bin:/bin",
         "SLURM_JOB_ID": "200",
@@ -129,12 +131,12 @@ def _run_prologue(tmp_path, resume: ResumeConfig, prev_state: str | None) -> sub
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not installed")
 def test_max_retries_allows_exactly_that_many_retries(tmp_path):
     resume = ResumeConfig(max_retries=3)
-    for _ in range(3):
-        result = _run_prologue(tmp_path, resume, "FAILED")
+    for prev_job_id in ("100", "101", "102"):
+        result = _run_prologue(tmp_path, resume, "FAILED", prev_job_id=prev_job_id)
         assert result.returncode == 0, result.stdout
         assert "REACHED_WORK" in result.stdout
 
-    result = _run_prologue(tmp_path, resume, "FAILED")
+    result = _run_prologue(tmp_path, resume, "FAILED", prev_job_id="103")
     assert result.returncode == 1
     assert "REACHED_WORK" not in result.stdout
 
@@ -158,3 +160,28 @@ def test_successor_is_killed_if_its_dependency_can_never_be_met(tmp_path):
     sbatch_args = (tmp_path / "sbatch_calls").read_text()
     assert "--dependency=afternotok:200" in sbatch_args
     assert "--kill-on-invalid-dep=yes" in sbatch_args
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not installed")
+def test_a_requeued_job_counts_the_previous_jobs_walltime_once(tmp_path):
+    resume = ResumeConfig(max_walltime="00:02:30")
+    _run_prologue(tmp_path, resume, "TIMEOUT", prev_job_id="100")
+    # Slurm requeued the job: same job id, same previous job, so the script runs again with the same argument.
+    requeued = _run_prologue(tmp_path, resume, "TIMEOUT", prev_job_id="100")
+
+    assert (tmp_path / ".gym_accumulated_walltime").read_text().strip() == "60"
+    assert "REACHED_WORK" in requeued.stdout
+
+    _run_prologue(tmp_path, resume, "TIMEOUT", prev_job_id="101")
+    assert (tmp_path / ".gym_accumulated_walltime").read_text().strip() == "120"
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not installed")
+def test_a_requeued_job_spends_one_infra_retry(tmp_path):
+    resume = ResumeConfig(max_retries=1)
+    _run_prologue(tmp_path, resume, "FAILED", prev_job_id="100")
+    requeued = _run_prologue(tmp_path, resume, "FAILED", prev_job_id="100")
+
+    assert requeued.returncode == 0, requeued.stdout
+    assert "REACHED_WORK" in requeued.stdout
+    assert (tmp_path / ".gym_infra_retries").read_text().strip() == "1"
