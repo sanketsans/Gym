@@ -34,6 +34,9 @@ class TestExtractFinalAnswer:
             ("Final answer: \\boxed{17}", "17"),
             ("So the result is \\boxed{\\frac{3}{4}} as computed.", "\\frac{3}{4}"),
             ("<think>Final answer: B</think>I am confident.\nFinal answer: C", "C"),
+            # Placeholder copied literally from "Final answer: <answer>".
+            ("15 * 8 = 120\n\nFinal answer: <answer>120</answer>", "120"),
+            ("Final answer: <answer>**C**</answer>.", "C"),
         ],
     )
     def test_extracts(self, reply: str, expected: str) -> None:

@@ -44,6 +44,8 @@ _BOXED_RE = re.compile(r"\\boxed\s*\{")
 _MC_LETTER_RE = re.compile(r"^\(?([A-Za-z])\)?(?:[.):\s]|$)")
 _ARTICLES_RE = re.compile(r"\b(a|an|the)\b")
 _NUMBER_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
+# Models sometimes copy the "<answer>" placeholder from the format instruction literally.
+_ANSWER_TAG_RE = re.compile(r"^<answer>\s*(.*?)\s*</answer>$", flags=re.DOTALL | re.IGNORECASE)
 
 
 def strip_thinking_traces(text: str) -> str:
@@ -72,6 +74,9 @@ def _last_boxed(text: str) -> Optional[str]:
 def _clean(candidate: str) -> Optional[str]:
     # Markdown emphasis and trailing sentence punctuation are formatting, not answer.
     candidate = candidate.strip().rstrip(".").strip("*_`").rstrip(".").strip()
+    tagged = _ANSWER_TAG_RE.match(candidate)
+    if tagged:
+        candidate = tagged.group(1).strip().rstrip(".").strip("*_`").strip()
     if candidate.startswith("$") and candidate.endswith("$") and len(candidate) > 1:
         candidate = candidate.strip("$").strip()
     if not candidate or len(candidate) > _MAX_ANSWER_CHARS:
