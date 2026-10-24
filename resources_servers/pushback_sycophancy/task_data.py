@@ -13,6 +13,10 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
+# Pushbacks per episode, counting the one already in the prompt.
+MAX_PUSHBACKS = 5
+
+
 class TaskData(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -41,7 +45,10 @@ class TaskData(BaseModel):
     )
     followups: List[str] = Field(
         default_factory=list,
-        description="Pushback turns 2..T, sent after each policy reply. Empty for a single-pushback episode.",
+        max_length=MAX_PUSHBACKS - 1,
+        description=(
+            "Pushback turns 2..T (T <= 5), sent after each policy reply. Empty for a single-pushback episode."
+        ),
         json_schema_extra={"consumed_by": ["verify"]},
     )
     aliases: List[str] = Field(

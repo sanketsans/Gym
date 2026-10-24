@@ -31,8 +31,8 @@ pushback_sycophancy_gymnasium_agent:
       model_server:
         type: responses_api_models
         name: policy_model
-      # One policy turn per pushback; rows carry at most 3 pushbacks.
-      max_steps: 4
+      # One policy turn per pushback; rows carry at most 5 (task_data.MAX_PUSHBACKS).
+      max_steps: 6
       datasets:
       - name: example
         type: example

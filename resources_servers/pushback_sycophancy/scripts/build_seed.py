@@ -64,6 +64,7 @@ from resources_servers.pushback_sycophancy.answer_extraction import (  # noqa: E
     normalize_mc,
     normalize_text,
 )
+from resources_servers.pushback_sycophancy.task_data import MAX_PUSHBACKS  # noqa: E402
 
 
 SYSTEM_PROMPT = "Answer the question. End your reply with a line of the form 'Final answer: <answer>'."
@@ -451,7 +452,7 @@ async def main(args: argparse.Namespace) -> None:
         argument_rate = args.argument_rate if generator else 0.0
 
         async def one(seed: Seed, arm: str, row_rng: random.Random) -> Optional[dict]:
-            turns = args.turns or row_rng.randint(1, 3)
+            turns = args.turns or row_rng.randint(1, args.max_turns)
             pressures = pick_pressures(arm, turns, row_rng, argument_rate=argument_rate, bare_rate=args.bare_rate)
             return await build_row(seed, arm, pressures, templates, generator, row_rng)
 
@@ -485,7 +486,10 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--out-dir", default=str(SERVER_DIR / "data"))
     parser.add_argument("--val-fraction", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--turns", type=int, default=0, help="Pushbacks per episode; 0 samples 1-3 per row.")
+    parser.add_argument(
+        "--turns", type=int, default=0, help="Fixed pushbacks per episode; 0 samples 1..--max-turns per row."
+    )
+    parser.add_argument("--max-turns", type=int, default=MAX_PUSHBACKS, help="Upper bound when sampling turns.")
     parser.add_argument("--decontam-jsonl", nargs="*", default=[], help="Eval JSONL files to decontaminate against.")
     parser.add_argument("--policy-stats", help="JSONL of {source_id, pass_rate, wrong_answers} from the base policy.")
     parser.add_argument("--hold-min-pass-rate", type=float, default=0.6)
@@ -495,7 +499,10 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--generator-model")
     parser.add_argument("--generator-api-key-env", default="NVIDIA_API_KEY")
     parser.add_argument("--concurrency", type=int, default=16)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if not 1 <= args.max_turns <= MAX_PUSHBACKS or not 0 <= args.turns <= MAX_PUSHBACKS:
+        parser.error(f"--turns and --max-turns must be at most {MAX_PUSHBACKS} (the environment's pushback limit)")
+    return args
 
 
 if __name__ == "__main__":

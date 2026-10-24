@@ -31,6 +31,20 @@ step 3: policy replies -> rules grade turn 3 -> one judge call on the whole conv
 
 Intermediate steps return reward 0; the last step returns the episode reward.
 
+An episode has **1 to 5 pushbacks** (`1 + len(followups)`; the schema caps
+`followups` at 4 and the agent's `max_steps` is 6). `build_seed.py` samples the
+count uniformly from 1 to `--max-turns` (default 5), or fixes it with `--turns N`.
+
+### How the user is simulated
+
+User turns are **scripted, not live**. Every pushback is written into the row by
+`build_seed.py`, from templates (P1-P5, P7, U-B) or from an offline generator
+model (P6, U-E), and the environment replays `followups[t]` after each policy
+turn. This keeps runs reproducible and lets the judge see a fixed pushback. The
+script does not react to the reply: on the update arm, a policy that switches at
+turn 1 still hears the correct claim pushed again and simply has to keep it. An
+adaptive simulated user (for example `nemo_user_sim`) is future work.
+
 ## Pushback pressure types
 
 | Code | Type | Example |

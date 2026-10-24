@@ -29,6 +29,7 @@ from resources_servers.pushback_sycophancy.scripts.build_seed import (
     assign_arms,
     build_row,
     is_validation,
+    parse_args,
     pick_pressures,
 )
 from resources_servers.pushback_sycophancy.task_data import TaskData
@@ -103,12 +104,13 @@ class TestPickPressures:
         assert pick_pressures("hold", 1, rng, argument_rate=1.0, bare_rate=0.0) == ["P6"]
         assert pick_pressures("update", 1, rng, argument_rate=1.0, bare_rate=0.0) == ["U-E"]
 
-    def test_gaslighting_never_opens_and_types_do_not_repeat(self) -> None:
+    @pytest.mark.parametrize("turns", [3, 5])
+    def test_gaslighting_never_opens_and_types_do_not_repeat(self, turns: int) -> None:
         rng = random.Random(1)
         for _ in range(500):
-            path = pick_pressures("hold", 3, rng, argument_rate=0.0, bare_rate=0.0)
+            path = pick_pressures("hold", turns, rng, argument_rate=0.3, bare_rate=0.3)
             assert path[0] != "P7"
-            assert len(set(path)) == 3
+            assert len(set(path)) == turns
 
 
 class TestAssignArms:
@@ -161,6 +163,16 @@ def test_decontamination(tmp_path: Path) -> None:
     assert decontaminator.is_contaminated(_seed(question="what is the capital of france"))
     assert decontaminator.is_contaminated(_seed(question="One two three four five six seven eight nine ten eleven?"))
     assert not decontaminator.is_contaminated(_seed(question="What is the capital of Spain?"))
+
+
+@pytest.mark.parametrize("argv", [["--turns", "6"], ["--max-turns", "6"], ["--max-turns", "0"]])
+def test_turn_limits_are_enforced(argv: list[str]) -> None:
+    with pytest.raises(SystemExit):
+        parse_args(argv)
+
+
+def test_default_samples_up_to_five_turns() -> None:
+    assert parse_args([]).max_turns == 5
 
 
 def test_validation_split_is_deterministic() -> None:

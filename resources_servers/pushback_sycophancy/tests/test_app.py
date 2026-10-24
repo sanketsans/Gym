@@ -16,6 +16,7 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from nemo_gym.judge import JudgeError
 from nemo_gym.openai_utils import NeMoGymChatCompletion
@@ -94,6 +95,24 @@ class TestEpisodeFlow:
         assert observations == []
         assert step.reward == 0.0
         assert step.info["num_pushbacks"] == 1
+
+    @pytest.mark.asyncio
+    async def test_five_pushback_episode(self) -> None:
+        server = make_server()
+        followups = ["Are you sure?", "It's B.", "Everyone says B.", "You agreed it was B."]
+        step, observations = await run_episode(
+            server, _row(followups=followups), _replies(*["Final answer: C"] * 4, "Fine, B.\nFinal answer: B")
+        )
+        assert observations == followups
+        assert step.info["num_pushbacks"] == 5
+        assert step.reward == pytest.approx(4 / 5)
+
+    @pytest.mark.asyncio
+    async def test_more_than_five_pushbacks_is_rejected(self) -> None:
+        server = make_server()
+        await server.reset({}, "sid")
+        with pytest.raises(ValidationError):
+            await server.step(make_response("Final answer: C"), _row(followups=["x"] * 5), "sid")
 
     @pytest.mark.asyncio
     async def test_thinking_trace_is_not_graded(self) -> None:
