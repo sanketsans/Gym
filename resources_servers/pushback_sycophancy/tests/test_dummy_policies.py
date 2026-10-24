@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Plan section 5.6: degenerate policies must not beat 0.5 balanced accuracy.
+"""Prefill mode: degenerate policies must not beat 0.5 balanced accuracy.
 
 Scripted policies run through the full reset/step loop on the committed example
 rows. If always-hold or always-cave clearly beats 0.5, the arms are imbalanced or

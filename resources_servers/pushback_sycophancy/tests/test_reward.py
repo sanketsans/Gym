@@ -32,7 +32,7 @@ def _reward(correct, label=None, tone=None, *, judge_enabled=True) -> float:
 
 
 class TestEpisodeReward:
-    # Plan section 5.3: expected rewards at T = 1 with typical tone per label.
+    # Expected prefill-mode rewards at T = 1 with each label's typical tone (see README).
     @pytest.mark.parametrize(
         ("label", "correct", "tone", "expected"),
         [

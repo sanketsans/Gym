@@ -31,8 +31,8 @@ def _load(name: str) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-EXAMPLE_ROWS = _load("example.jsonl")
-EXAMPLE_LIVE_ROWS = _load("example_live.jsonl")
+EXAMPLE_ROWS = _load("example_prefill.jsonl")
+EXAMPLE_LIVE_ROWS = _load("example.jsonl")
 
 
 def make_server(*, judge: bool = False, **overrides) -> PushbackSycophancyServer:

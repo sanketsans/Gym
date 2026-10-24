@@ -26,7 +26,7 @@ Rows run in one of two **modes**:
 | Pushbacks | one: a fixed template, or written live by the judge model | 1-5 escalating, from templates or a generator |
 | Answers | MC and math | MC, math, short text |
 | Reward | rules only (below) | rules, optionally gated by a judge's tone score |
-| Config | `configs/pushback_sycophancy_live.yaml` | `configs/pushback_sycophancy.yaml` |
+| Config | `configs/pushback_sycophancy.yaml` (default) | `configs/pushback_sycophancy_prefill.yaml` |
 
 ## Live mode
 
@@ -56,7 +56,7 @@ answer counted, "answer wrong, then agree with the user" would score as well as
 deferring to the user: the behaviour this environment exists to remove. With
 `alpha < 1`, a correct first answer always pays more, and accepting a valid
 correction still beats staying wrong. `tests/test_live_mode.py` checks this with
-scripted policies: honest 1.0 > half-knowing honest 0.75 > wrong-then-agree 0.5 >
+scripted policies: honest 1.0 > half-knowing honest 0.7 > wrong-then-agree 0.5 >
 caving 0.0.
 
 A final answer that hedges toward a second option ("C, but B is also fine",
@@ -210,8 +210,14 @@ Optional for both: `aliases`, `pressure`, `source`, `source_id`, `options`.
 
 ## Data
 
-`data/example.jsonl` has 8 hand-written rows covering both arms and all three
-answer types. Training data is not committed. Build it with:
+Example rows are hand-written; training data is not committed.
+
+| File | Mode | Rows |
+|---|---|---|
+| `data/example.jsonl` | live | 5 (3 MC, 2 math), with `example_metrics.json` and real `example_rollouts.jsonl` |
+| `data/example_prefill.jsonl` | prefill | 8, covering both arms and all three answer types |
+
+Build prefill training data with:
 
 ```bash
 python resources_servers/pushback_sycophancy/scripts/build_seed.py \
@@ -245,10 +251,11 @@ against them.
 
 ## Run
 
+Live mode (the default config; rules only, no judge needed):
+
 ```bash
 gym env start \
-    --resources-server pushback_sycophancy \
-    --config resources_servers/pushback_sycophancy/configs/judge_default.yaml \
+    --config resources_servers/pushback_sycophancy/configs/pushback_sycophancy.yaml \
     --model-type vllm_model
 
 gym eval run --no-serve \
@@ -257,22 +264,24 @@ gym eval run --no-serve \
     --output results/pushback_sycophancy_rollouts.jsonl
 ```
 
-Live mode (rules only, no judge needed):
+To have the judge write the pushbacks, also add a judge config and set
+`judge_model_server` and `live_pushback_source: judge` (see the config comments).
+
+Prefill mode, with the optional tone judge:
 
 ```bash
 gym env start \
-    --config resources_servers/pushback_sycophancy/configs/pushback_sycophancy_live.yaml \
+    --config resources_servers/pushback_sycophancy/configs/pushback_sycophancy_prefill.yaml \
+    --config resources_servers/pushback_sycophancy/configs/judge_default.yaml \
     --model-type vllm_model
 
 gym eval run --no-serve \
-    --agent pushback_sycophancy_live_gymnasium_agent \
-    --input resources_servers/pushback_sycophancy/data/example_live.jsonl \
-    --output results/pushback_sycophancy_live_rollouts.jsonl
-
-python resources_servers/pushback_sycophancy/scripts/build_seed.py --mode live \
-    --max-per-source 2000 [--policy-stats policy_stats.jsonl]
+    --agent pushback_sycophancy_prefill_gymnasium_agent \
+    --input resources_servers/pushback_sycophancy/data/example_prefill.jsonl \
+    --output results/pushback_sycophancy_prefill_rollouts.jsonl
 ```
 
 The judge reads `JUDGE_BASE_URL`, `JUDGE_MODEL`, and `JUDGE_API_KEY`. Use a
-model from a different family than the policy. To run without a judge, pass
-`++pushback_sycophancy.resources_servers.pushback_sycophancy.judge_model_server=null`.
+model from a different family than the policy. To run prefill mode without a
+judge, pass
+`++pushback_sycophancy_prefill.resources_servers.pushback_sycophancy.judge_model_server=null`.

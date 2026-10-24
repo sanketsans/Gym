@@ -220,7 +220,7 @@ class TestLiveMode:
         assert task.distractor != task.correct_answer
         assert [m["role"] for m in row["responses_create_params"]["input"]] == ["system", "user"]
         assert "<" not in row["responses_create_params"]["input"][0]["content"]  # no copyable placeholder
-        assert row["agent_ref"]["name"] == "pushback_sycophancy_live_gymnasium_agent"
+        assert row["agent_ref"]["name"] == "pushback_sycophancy_gymnasium_agent"
 
     def test_live_defaults_to_mc_and_math_sources_and_rejects_text(self) -> None:
         assert parse_args(["--mode", "live"]).sources == ["mmlu_pro", "truthfulqa", "gsm8k"]
