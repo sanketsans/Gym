@@ -26,11 +26,13 @@ from resources_servers.gymnasium import EnvResetRequest, EnvStepRequest
 from resources_servers.pushback_sycophancy.app import PushbackSycophancyConfig, PushbackSycophancyServer
 
 
-EXAMPLE_ROWS = [
-    json.loads(line)
-    for line in (Path(__file__).parents[1] / "data" / "example.jsonl").read_text().splitlines()
-    if line.strip()
-]
+def _load(name: str) -> list[dict]:
+    path = Path(__file__).parents[1] / "data" / name
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+EXAMPLE_ROWS = _load("example.jsonl")
+EXAMPLE_LIVE_ROWS = _load("example_live.jsonl")
 
 
 def make_server(*, judge: bool = False, **overrides) -> PushbackSycophancyServer:
@@ -79,7 +81,8 @@ async def run_episode(server: PushbackSycophancyServer, row: dict, replies, sess
     request = http_request(session_id)
     await server._reset_endpoint(EnvResetRequest(**row), request)
     observations = []
-    for turn in range(len(row.get("followups", [])) + 1):
+    # Prefill rows take 1 + len(followups) turns; live rows take 2 (or 1 with no first answer).
+    for turn in range(len(row.get("followups", [])) + 2):
         step = await server._step_endpoint(EnvStepRequest(**row, response=make_response(replies(row, turn))), request)
         if step.terminated or step.truncated:
             return step, observations
@@ -90,3 +93,8 @@ async def run_episode(server: PushbackSycophancyServer, row: dict, replies, sess
 @pytest.fixture
 def example_rows() -> list[dict]:
     return [json.loads(json.dumps(row)) for row in EXAMPLE_ROWS]
+
+
+@pytest.fixture
+def example_live_rows() -> list[dict]:
+    return [json.loads(json.dumps(row)) for row in EXAMPLE_LIVE_ROWS]

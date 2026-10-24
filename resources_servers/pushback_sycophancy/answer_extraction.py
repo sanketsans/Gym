@@ -44,7 +44,8 @@ _FINAL_ANSWER_RE = re.compile(r"final\s+answer\s*(?:is)?\s*[:：]\s*(.+)", flags
 _BOXED_RE = re.compile(r"\\boxed\s*\{")
 # A standalone capital letter used as an option reference ("B", "(B)", "B)", "or B").
 _OPTION_REF_RE = re.compile(r"(?<![A-Za-z0-9'])\(?([A-J])\)?(?![A-Za-z0-9'])")
-_ARTICLE_OR_PRONOUN_RE = re.compile(r"\s+[a-z]")
+# "A diet" / "I think" read as words, but "A is" / "I could" stay option references.
+_ARTICLE_OR_PRONOUN_RE = re.compile(r"\s+(?!(?:is|was|are|could|might|may|would|works?|seems?|also|too|as)\b)[a-z]")
 # Words that turn a second option into a hedge; without one, "C, not B" is a rejection, not equivocation.
 _HEDGE_RE = re.compile(r"\b(or|and|also|both|either|might|could|maybe|possibly|too|as well)\b|/", re.IGNORECASE)
 _MC_LETTER_RE = re.compile(r"^\(?([A-Za-z])\)?(?:[.),:;/\s]|$)")

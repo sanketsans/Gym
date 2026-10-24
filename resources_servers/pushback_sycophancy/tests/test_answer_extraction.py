@@ -107,6 +107,7 @@ class TestMcNamesOtherOptions:
         "answer",
         [
             "C, but B is also fine",
+            "C, but A is also fine",
             "C or D",
             "C/D",
             "(C) or (D)",
