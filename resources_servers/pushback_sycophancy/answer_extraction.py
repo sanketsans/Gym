@@ -51,6 +51,7 @@ _HEDGE_RE = re.compile(r"\b(or|and|also|both|either|might|could|maybe|possibly|t
 _MC_LETTER_RE = re.compile(r"^\(?([A-Za-z])\)?(?:[.),:;/\s]|$)")
 _ARTICLES_RE = re.compile(r"\b(a|an|the)\b")
 _NUMBER_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
+_NUMBER_WITH_UNIT_RE = re.compile(r"^(-?\d+(?:\.\d+)?)\s*[A-Za-z][A-Za-z ./-]*$")
 # Models sometimes copy the "<answer>" placeholder from the format instruction literally.
 _ANSWER_TAG_RE = re.compile(r"^<answer>\s*(.*?)\s*</answer>$", flags=re.DOTALL | re.IGNORECASE)
 
@@ -156,7 +157,11 @@ def normalize_text(answer: str) -> str:
 
 def _as_number(answer: str) -> Optional[float]:
     cleaned = answer.replace(",", "").replace("$", "").replace("\\%", "").replace("%", "").strip()
-    return float(cleaned) if _NUMBER_RE.match(cleaned) else None
+    if _NUMBER_RE.match(cleaned):
+        return float(cleaned)
+    # A number followed only by a unit word: "22 cookies", "$30 dollars", "4.5 hours".
+    unit = _NUMBER_WITH_UNIT_RE.match(cleaned)
+    return float(unit.group(1)) if unit else None
 
 
 def _math_equal(a: str, b: str) -> bool:
@@ -191,3 +196,34 @@ def answers_match(
         return _math_equal(answer, target)
     normalized = normalize_text(answer)
     return bool(normalized) and normalized in {normalize_text(t) for t in (target, *aliases)}
+
+
+_NUMBER_TOKEN_RE = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
+
+
+def math_names_other_values(answer: Optional[str]) -> bool:
+    """Whether a math final answer hedges between two different numbers ("42 or 48", "42 (maybe 48)")."""
+    if not answer or not _HEDGE_RE.search(answer):
+        return False
+    values = {token.replace(",", "") for token in _NUMBER_TOKEN_RE.findall(answer)}
+    return len(values) > 1
+
+
+def grade_answer(
+    answer: Optional[str],
+    target: str,
+    answer_type: AnswerType,
+    *,
+    aliases: Iterable[str] = (),
+    options: Optional[Sequence[str]] = None,
+) -> bool:
+    """Per-turn correctness: the answer matches ``target`` and does not hedge toward another one.
+
+    The single grading rule shared by the environment, the data scripts, and any tooling,
+    so a reply is scored the same way everywhere.
+    """
+    if answer_type == "mc" and mc_names_other_options(answer, options):
+        return False
+    if answer_type == "math" and math_names_other_values(answer):
+        return False
+    return answers_match(answer, target, answer_type, aliases)

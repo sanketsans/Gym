@@ -23,6 +23,7 @@ import yaml
 from resources_servers.pushback_sycophancy.scripts.build_seed import (
     Decontaminator,
     Seed,
+    _mc_letter,
     _mc_seed,
     _numeric_distractors,
     apply_policy_stats,
@@ -221,14 +222,39 @@ class TestLiveMode:
         assert "<" not in row["responses_create_params"]["input"][0]["content"]  # no copyable placeholder
         assert row["agent_ref"]["name"] == "pushback_sycophancy_live_gymnasium_agent"
 
-    def test_live_defaults_to_mc_sources_and_rejects_others(self) -> None:
-        assert parse_args(["--mode", "live"]).sources == ["mmlu_pro", "truthfulqa"]
-        assert "gsm8k" in parse_args([]).sources
+    def test_live_defaults_to_mc_and_math_sources_and_rejects_text(self) -> None:
+        assert parse_args(["--mode", "live"]).sources == ["mmlu_pro", "truthfulqa", "gsm8k"]
+        assert "triviaqa" in parse_args([]).sources
         with pytest.raises(SystemExit):
-            parse_args(["--mode", "live", "--sources", "gsm8k"])
+            parse_args(["--mode", "live", "--sources", "triviaqa"])
 
     @pytest.mark.parametrize(
         ("pass_rate", "kept"), [(None, False), (0.1, False), (0.3, True), (0.6, True), (1.0, False)]
     )
     def test_pass_rate_band(self, pass_rate, kept: bool) -> None:
         assert in_pass_rate_band(_seed(pass_rate=pass_rate), 0.3, 0.8) is kept
+
+
+class TestLiveMath:
+    def test_math_live_row_records_its_distractor_source(self) -> None:
+        seed = _seed(answer_type="math", correct_answer="36", distractors=["37", "35"])
+        row = build_live_row(seed)
+        TaskData.model_validate(row)
+        assert (row["answer_type"], row["distractor"], row["distractor_source"]) == ("math", "37", "perturbation")
+        assert "final number" in row["responses_create_params"]["input"][0]["content"]
+
+    def test_policy_wrong_answers_replace_perturbations(self, tmp_path: Path) -> None:
+        seed = _seed(source_id="gsm8k/1", answer_type="math", correct_answer="36", distractors=["37"])
+        path = tmp_path / "stats.jsonl"
+        path.write_text(
+            json.dumps({"source_id": "gsm8k/1", "pass_rate": 0.5, "wrong_answers": ["16", "16", "12", "36.0"]})
+        )
+        apply_policy_stats([seed], path)
+        assert seed.distractors[:2] == ["16", "12"]  # most frequent first; the equivalent "36.0" is not wrong
+        assert seed.distractor_source == "policy"
+        assert build_live_row(seed)["distractor_source"] == "policy"
+
+    def test_mc_option_text_maps_back_to_the_current_letter(self) -> None:
+        seed = _mc_seed("s", "s/0", "Q?", ["right", "w1", "w2", "w3"], 0, random.Random(3))
+        assert seed.options[ord(_mc_letter(seed, "w2")) - ord("A")] == "w2"
+        assert _mc_letter(seed, "Z") is None

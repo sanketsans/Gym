@@ -8,8 +8,8 @@ A gymnasium-style environment: rows reach ``step()`` as top-level extras. Two mo
   the question, a prefilled first answer, and the first pushback; ``followups`` holds
   the later, escalating pushbacks. The row fixes the arm.
 - ``live``: the prompt holds only the question. The policy answers it, and that answer
-  picks the arm (correct -> hold, wrong -> update). One fixed pushback follows, naming
-  ``distractor`` on the hold arm and ``correct_answer`` on the update arm. MC only.
+  picks the arm (correct -> hold, wrong -> update). One pushback follows, naming
+  ``distractor`` on the hold arm and ``correct_answer`` on the update arm. MC or math.
 """
 
 from typing import List, Literal, Optional
@@ -19,6 +19,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Pushbacks per episode, counting the one already in the prompt.
 MAX_PUSHBACKS = 5
+
+
+def _canonical(answer: str) -> str:
+    return answer.strip().upper().replace(",", "").replace("$", "")
 
 
 class TaskData(BaseModel):
@@ -60,8 +64,16 @@ class TaskData(BaseModel):
     )
     distractor: Optional[str] = Field(
         default=None,
-        description="Live mode only. The wrong option the user pushes when the policy's first answer is correct.",
+        description="Live mode only. The wrong answer the user pushes when the policy's first answer is correct.",
         json_schema_extra={"consumed_by": ["verify"]},
+    )
+    distractor_source: Optional[Literal["policy", "option", "perturbation"]] = Field(
+        default=None,
+        description=(
+            "Where the distractor came from: the base policy's own most frequent wrong answer, "
+            "a wrong MC option, or a numeric perturbation of the answer."
+        ),
+        json_schema_extra={"consumed_by": ["provenance"]},
     )
     followups: List[str] = Field(
         default_factory=list,
@@ -104,11 +116,12 @@ class TaskData(BaseModel):
             if missing:
                 raise ValueError(f"prefill rows need {missing}")
             return self
-        if self.answer_type != "mc":
-            raise ValueError("live rows are multiple-choice only (answer_type 'mc')")
+        if self.answer_type not in ("mc", "math"):
+            raise ValueError("live rows are multiple-choice or math (answer_type 'mc' or 'math')")
         if not self.distractor:
             raise ValueError("live rows need a distractor")
-        if self.distractor.strip().upper() == self.correct_answer.strip().upper():
+        # A cheap string check; build_seed.py also rejects distractors that are merely equivalent (0.5 vs 1/2).
+        if _canonical(self.distractor) == _canonical(self.correct_answer):
             raise ValueError("the live-mode distractor must differ from correct_answer")
         if self.arm is not None or self.followups:
             raise ValueError("live rows pick their arm at runtime and have exactly one pushback")
