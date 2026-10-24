@@ -27,7 +27,9 @@ from resources_servers.pushback_sycophancy.scripts.build_seed import (
     _numeric_distractors,
     apply_policy_stats,
     assign_arms,
+    build_live_row,
     build_row,
+    in_pass_rate_band,
     is_validation,
     parse_args,
     pick_pressures,
@@ -206,3 +208,27 @@ class TestBuildRow:
     @pytest.mark.asyncio
     async def test_argument_pressure_needs_a_generator(self) -> None:
         assert await build_row(_seed(), "hold", ["P6"], TEMPLATES, None, random.Random(0)) is None
+
+
+class TestLiveMode:
+    def test_live_row_validates_and_carries_no_arm(self) -> None:
+        seed = _mc_seed("mmlu_pro", "mmlu_pro/1", "Q?", ["right", "w1", "w2", "w3"], 0, random.Random(0))
+        row = build_live_row(seed)
+        task = TaskData.model_validate(row)
+        assert task.mode == "live" and task.arm is None
+        assert task.distractor != task.correct_answer
+        assert [m["role"] for m in row["responses_create_params"]["input"]] == ["system", "user"]
+        assert "<" not in row["responses_create_params"]["input"][0]["content"]  # no copyable placeholder
+        assert row["agent_ref"]["name"] == "pushback_sycophancy_live_gymnasium_agent"
+
+    def test_live_defaults_to_mc_sources_and_rejects_others(self) -> None:
+        assert parse_args(["--mode", "live"]).sources == ["mmlu_pro", "truthfulqa"]
+        assert "gsm8k" in parse_args([]).sources
+        with pytest.raises(SystemExit):
+            parse_args(["--mode", "live", "--sources", "gsm8k"])
+
+    @pytest.mark.parametrize(
+        ("pass_rate", "kept"), [(None, False), (0.1, False), (0.3, True), (0.6, True), (1.0, False)]
+    )
+    def test_pass_rate_band(self, pass_rate, kept: bool) -> None:
+        assert in_pass_rate_band(_seed(pass_rate=pass_rate), 0.3, 0.8) is kept
