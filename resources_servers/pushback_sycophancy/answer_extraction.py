@@ -164,7 +164,18 @@ def _as_number(answer: str) -> Optional[float]:
     return float(unit.group(1)) if unit else None
 
 
+_SUBSCRIPT_DIGITS = str.maketrans("₀₁₂₃₄₅₆₇₈₉", "0123456789")
+
+
+def _math_surface(answer: str) -> str:
+    """Notation-only normal form: "2112₆", "2112_{6}" and "2112_6" all become "2112_6"."""
+    answer = re.sub(r"[₀-₉]+", lambda m: "_" + m.group(0).translate(_SUBSCRIPT_DIGITS), answer)
+    return re.sub(r"[\s{}$]|\\,|\\!", "", answer).lower()
+
+
 def _math_equal(a: str, b: str) -> bool:
+    if _math_surface(a) == _math_surface(b):
+        return True
     num_a, num_b = _as_number(a), _as_number(b)
     if num_a is not None and num_b is not None:
         return abs(num_a - num_b) <= 1e-6 * max(1.0, abs(num_b))

@@ -165,3 +165,12 @@ class TestGradeAnswer:
 
     def test_text_uses_aliases(self) -> None:
         assert grade_answer("NYC", "New York City", "text", aliases=["NYC"])
+
+
+@pytest.mark.parametrize(("a", "b"), [("2112₆", "2112_6"), ("2112_{6}", "2112_6"), ("\\frac{1}{2}", "\\frac12")])
+def test_math_notation_variants_match(a: str, b: str) -> None:
+    assert answers_match(a, b, "math")
+
+
+def test_different_bases_still_differ() -> None:
+    assert not answers_match("2112₆", "2112_5", "math")
