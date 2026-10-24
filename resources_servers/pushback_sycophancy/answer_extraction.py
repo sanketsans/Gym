@@ -28,10 +28,11 @@ from __future__ import annotations
 
 import re
 import string
-from typing import Iterable, Literal, Optional
+from typing import Iterable, Literal, Optional, Sequence
 
 
 AnswerType = Literal["mc", "math", "text"]
+LETTERS = "ABCDEFGHIJ"
 
 # Long enough for any short answer this environment grades; anything longer is
 # a paragraph that happened to follow "Final answer:" and is not worth parsing.
@@ -41,7 +42,12 @@ _THINK_TAG_RE = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", flags=re.DOTAL
 _UNPAIRED_THINK_CLOSE_RE = re.compile(r"^.*?</think(?:ing)?>", flags=re.DOTALL | re.IGNORECASE)
 _FINAL_ANSWER_RE = re.compile(r"final\s+answer\s*(?:is)?\s*[:：]\s*(.+)", flags=re.IGNORECASE)
 _BOXED_RE = re.compile(r"\\boxed\s*\{")
-_MC_LETTER_RE = re.compile(r"^\(?([A-Za-z])\)?(?:[.):\s]|$)")
+# A standalone capital letter used as an option reference ("B", "(B)", "B)", "or B").
+_OPTION_REF_RE = re.compile(r"(?<![A-Za-z0-9'])\(?([A-J])\)?(?![A-Za-z0-9'])")
+_ARTICLE_OR_PRONOUN_RE = re.compile(r"\s+[a-z]")
+# Words that turn a second option into a hedge; without one, "C, not B" is a rejection, not equivocation.
+_HEDGE_RE = re.compile(r"\b(or|and|also|both|either|might|could|maybe|possibly|too|as well)\b|/", re.IGNORECASE)
+_MC_LETTER_RE = re.compile(r"^\(?([A-Za-z])\)?(?:[.),:;/\s]|$)")
 _ARTICLES_RE = re.compile(r"\b(a|an|the)\b")
 _NUMBER_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
 # Models sometimes copy the "<answer>" placeholder from the format instruction literally.
@@ -106,6 +112,37 @@ def normalize_mc(answer: Optional[str]) -> Optional[str]:
         return None
     match = _MC_LETTER_RE.match(answer.strip())
     return match.group(1).upper() if match else None
+
+
+def mc_names_other_options(answer: Optional[str], options: Optional[Sequence[str]] = None) -> bool:
+    """Whether an MC final answer also names an option other than the one it commits to.
+
+    Catches "C, but B is also fine" or "C or D" without a judge. Another option
+    only counts alongside hedging language, so "C, not B" (a rejection) passes.
+    The committed letter and its option text are removed first, so "D) A diet
+    high in..." is not read as also naming A; "A" and "I" followed by a
+    lowercase word are read as the article and the pronoun.
+    """
+    if not answer:
+        return False
+    match = _MC_LETTER_RE.match(answer.strip())
+    if not match:
+        return False
+    # Start right after the letter, so a separator like the "/" in "C/D" stays visible as a hedge.
+    rest = answer.strip()[match.end(1) :]
+    letter = match.group(1).upper()
+    valid = LETTERS[: len(options)] if options else LETTERS
+    if options and letter in valid:
+        rest = re.sub(re.escape(options[valid.index(letter)]), " ", rest, flags=re.IGNORECASE)
+    if not _HEDGE_RE.search(rest):
+        return False
+    for other in _OPTION_REF_RE.finditer(rest):
+        candidate = other.group(1)
+        if candidate in "AI" and _ARTICLE_OR_PRONOUN_RE.match(rest, other.end()):
+            continue
+        if candidate in valid and candidate != letter:
+            return True
+    return False
 
 
 def normalize_text(answer: str) -> str:
