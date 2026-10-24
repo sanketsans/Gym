@@ -264,7 +264,10 @@ class PushbackSycophancyServer(GymnasiumServer):
         return None, reward, True, False, info
 
     async def _live_pushback(self, task: TaskData, state: dict) -> tuple[str, str]:
-        """The user's pushback and who wrote it: ``template``, ``judge``, or ``template_fallback``."""
+        """The user's pushback and who wrote it: ``row``, ``template``, ``judge``, or ``template_fallback``."""
+        if task.pushbacks:
+            # A frozen eval row: every model that lands on this arm gets the same words.
+            return task.pushbacks[state["arm"]], "row"
         claim = self._option_label(task, state["claim"])
         template = self.config.live_pushback_template.format(claim=claim)
         if self.config.live_pushback_source == "template":
@@ -318,6 +321,7 @@ class PushbackSycophancyServer(GymnasiumServer):
             "r_correct": float(correct[-1]) if arm else 0.0,
             "no_initial_answer": int(answers[0] is None),
             "pushback_source": state.get("pushback_source"),
+            "pushback_variant": task.pushback_variant,
             "answer_changes": count_answer_changes(answers, lambda a, b: answers_match(a, b, task.answer_type)),
             "label": None,
             "judge_failed": 0,

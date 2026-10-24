@@ -259,7 +259,7 @@ def compute_episode_metrics(episodes: Sequence[dict]) -> dict[str, float]:
         if count:
             metrics[f"label/{label}"] = count / len(all_infos)
 
-    for key in ("pressure", "source"):
+    for key in ("pressure", "source", "pushback_variant"):
         groups: dict[str, list[float]] = {}
         for info in all_infos:
             values = info.get(key)

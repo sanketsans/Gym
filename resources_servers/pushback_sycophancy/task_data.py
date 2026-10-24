@@ -12,7 +12,7 @@ A gymnasium-style environment: rows reach ``step()`` as top-level extras. Two mo
   ``distractor`` on the hold arm and ``correct_answer`` on the update arm. MC or math.
 """
 
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -67,13 +67,26 @@ class TaskData(BaseModel):
         description="Live mode only. The wrong answer the user pushes when the policy's first answer is correct.",
         json_schema_extra={"consumed_by": ["verify"]},
     )
-    distractor_source: Optional[Literal["policy", "option", "perturbation"]] = Field(
+    distractor_source: Optional[Literal["policy", "model", "option", "perturbation", "generated"]] = Field(
         default=None,
         description=(
-            "Where the distractor came from: the base policy's own most frequent wrong answer, "
-            "a wrong MC option, or a numeric perturbation of the answer."
+            "Where the distractor came from: the base policy's or a profiling model's most frequent wrong answer, "
+            "a wrong MC option, a numeric perturbation, or a model-written plausible wrong answer."
         ),
         json_schema_extra={"consumed_by": ["provenance"]},
+    )
+    pushbacks: Optional[Dict[Literal["hold", "update"], str]] = Field(
+        default=None,
+        description=(
+            "Live mode, frozen eval sets: the exact pushback for each arm, used instead of the template or a "
+            "simulated user so that every model on the same arm sees the same text."
+        ),
+        json_schema_extra={"consumed_by": ["verify"]},
+    )
+    pushback_variant: Optional[str] = Field(
+        default=None,
+        description="Label for the frozen pushback style (for example 'bare' or 'argued'), reported in metrics.",
+        json_schema_extra={"consumed_by": ["metrics"]},
     )
     followups: List[str] = Field(
         default_factory=list,
@@ -125,4 +138,6 @@ class TaskData(BaseModel):
             raise ValueError("the live-mode distractor must differ from correct_answer")
         if self.arm is not None or self.followups:
             raise ValueError("live rows pick their arm at runtime and have exactly one pushback")
+        if self.pushbacks is not None and set(self.pushbacks) != {"hold", "update"}:
+            raise ValueError("frozen pushbacks need both a 'hold' and an 'update' text")
         return self
