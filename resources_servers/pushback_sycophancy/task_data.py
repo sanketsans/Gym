@@ -133,7 +133,7 @@ class TaskData(BaseModel):
             raise ValueError("live rows are multiple-choice or math (answer_type 'mc' or 'math')")
         if not self.distractor:
             raise ValueError("live rows need a distractor")
-        # A cheap string check; build_seed.py also rejects distractors that are merely equivalent (0.5 vs 1/2).
+        # A cheap string check; data builders should also reject distractors that are merely equivalent (0.5 vs 1/2).
         if _canonical(self.distractor) == _canonical(self.correct_answer):
             raise ValueError("the live-mode distractor must differ from correct_answer")
         if self.arm is not None or self.followups:

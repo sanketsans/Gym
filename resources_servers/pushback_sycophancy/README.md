@@ -80,22 +80,12 @@ was used.
 
 **Where the hold-arm claim comes from** (`distractor_source` in each row):
 
-- MC: a wrong option, ranked by how often the base policy picks it when `--policy-stats` is given.
-- Math: the base policy's own most frequent wrong answer. Sample it first:
+- MC: a wrong option, preferably the one models pick most often.
+- Math: a model's own most frequent wrong answer (`policy` / `model`), or a
+  plausible wrong value; numeric perturbations (n +/- 1, 2n, ...) are easy to dismiss.
 
-```bash
-python resources_servers/pushback_sycophancy/scripts/build_seed.py --mode live --out-dir /tmp/seed
-python resources_servers/pushback_sycophancy/scripts/sample_policy_stats.py \
-    --input /tmp/seed/train_live.jsonl --output /tmp/seed/policy_stats.jsonl \
-    --base-url http://localhost:8000/v1 --model <policy>          # 8 samples per question
-python resources_servers/pushback_sycophancy/scripts/build_seed.py --mode live \
-    --policy-stats /tmp/seed/policy_stats.jsonl                    # band filter + policy distractors
-```
-
-Without `--policy-stats`, math distractors fall back to numeric perturbations
-(n +/- 1, 2n, ...), which are easier to dismiss. A strong policy passes most of
-GSM8K, so expect few math questions inside the pass-rate band; a smoke run on one
-checkpoint kept 1 in 15.
+The environment only reads the row; building rows (sampling a model for pass
+rates and distractors, writing pushbacks) happens offline.
 
 **Arm balance.** The arm follows the policy's accuracy, so a question it always
 gets right puts every rollout of a GRPO group on the hold arm. Groups where every
@@ -119,15 +109,12 @@ step 3: policy replies -> rules grade turn 3 -> one judge call on the whole conv
 Intermediate steps return reward 0; the last step returns the episode reward.
 
 An episode has **1 to 5 pushbacks** (`1 + len(followups)`; the schema caps
-`followups` at 4 and the agent's `max_steps` is 6). `build_seed.py` samples the
-count uniformly from 1 to `--max-turns` (default 5), or fixes it with `--turns N`.
+`followups` at 4 and the agent's `max_steps` is 6).
 
 ### How the user is simulated
 
-User turns are **scripted, not live**. Every pushback is written into the row by
-`build_seed.py`, from templates (P1-P5, P7, U-B) or from an offline generator
-model (P6, U-E), and the environment replays `followups[t]` after each policy
-turn. This keeps runs reproducible and lets the judge see a fixed pushback. The
+User turns are **scripted, not live**. Every pushback is written into the row
+offline, and the environment replays `followups[t]` after each policy turn. This keeps runs reproducible and lets the judge see a fixed pushback. The
 script does not react to the reply: on the update arm, a policy that switches at
 turn 1 still hears the correct claim pushed again and simply has to keep it. An
 adaptive simulated user (for example `nemo_user_sim`) is future work.
@@ -146,10 +133,10 @@ adaptive simulated user (for example `nemo_user_sim`) is future work.
 | U-E | valid evidence (update arm) | points at the exact error, written per question |
 | U-B | bare tentative claim | "I think it's B." |
 
-Both arms draw from the same templates (`prompts/pushback_templates.yaml`), and
-the argument-bearing types (P6 / U-E) are written to the same length and
-register. So the arm cannot be read off the wording, which
-`scripts/leakage_check.py` verifies.
+Rows should draw both arms' pushbacks from the same pressure distribution, and
+write the argument-bearing types (P6 / U-E) to the same length and register, so
+the arm cannot be read off the wording. A text classifier predicting the arm from
+the pushbacks alone should stay near chance (below 0.6 accuracy).
 
 ## Reward
 
@@ -217,34 +204,19 @@ Example rows are hand-written; training data is not committed.
 | `data/example.jsonl` | live | 5 (3 MC, 2 math), with `example_metrics.json` and real `example_rollouts.jsonl` |
 | `data/example_prefill.jsonl` | prefill | 8, covering both arms and all three answer types |
 
-Build prefill training data with:
-
-```bash
-python resources_servers/pushback_sycophancy/scripts/build_seed.py \
-    --sources mmlu_pro truthfulqa gsm8k triviaqa --max-per-source 2000 \
-    --decontam-jsonl <eval jsonl files...> \
-    [--policy-stats policy_stats.jsonl] \
-    [--generator-model <model> --generator-base-url <url>]
-
-uv pip install scikit-learn
-python resources_servers/pushback_sycophancy/scripts/leakage_check.py \
-    resources_servers/pushback_sycophancy/data/train.jsonl     # target: accuracy < 0.6
-```
+Training and evaluation data are built offline and are not committed. Rows must
+follow `task_data.py`. Good sources have short, checkable answers and a training
+split, for example:
 
 | Source | Answer type | License |
 |---|---|---|
-| MMLU-Pro (`TIGER-Lab/MMLU-Pro`) | mc | MIT |
-| TruthfulQA MC1 (`truthfulqa/truthful_qa`) | mc | Apache-2.0 |
+| MATH (`EleutherAI/hendrycks_math`, train) | math | MIT |
 | GSM8K (`openai/gsm8k`, train) | math | MIT |
-| TriviaQA (`mandarjoshi/trivia_qa`, rc.nocontext) | text | Apache-2.0 |
+| AQuA-RAT (`deepmind/aqua_rat`, train) | mc | Apache-2.0 |
+| MedMCQA (`openlifescienceai/medmcqa`, train) | mc | Apache-2.0 |
+| CommonsenseQA (`tau/commonsense_qa`, train) | mc | MIT |
 
-- `--policy-stats` takes JSONL of `{source_id, pass_rate, wrong_answers}` from
-  sampling the base policy. Hold-arm seeds then require `pass_rate >= 0.6`, and
-  the distractor is the policy's own most frequent mistake.
-- `--generator-model` writes the prefilled explanations, the P6 / U-E arguments,
-  and the TriviaQA distractors. Without it, TriviaQA is skipped and the argument
-  types are not used.
-
+MMLU-Pro and TruthfulQA have no training split; use them for evaluation only.
 Do not train on held-out sycophancy evals such as Anthropic's `sycophancy-eval`
 (which has no license, so don't vendor it) or SYCON-Bench, and decontaminate
 against them.
