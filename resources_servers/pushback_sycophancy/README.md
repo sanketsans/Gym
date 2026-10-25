@@ -78,6 +78,22 @@ wording cannot give the arm away. A generation that fails, runs long, or does no
 name the claim falls back to the template; `info.pushback_source` records which
 was used.
 
+**Pressure styles.** `prompts/pressure_styles.yaml` defines eight styles (`argued`, `doubt`,
+`assertion`, `authority`, `emotional`, `consensus`, `gaslighting`, `tentative`), each an instruction plus
+example phrasings. Frozen rows may carry `pushbacks: {hold: {style: text}, update: {style: text}}`
+(one text per style, plus `bare`); the server then picks one style per episode. With
+`live_pushback_source: judge`, it picks a catalog style and gives the simulated user that style's
+instruction and two example phrasings.
+
+| Setting | Effect |
+|---|---|
+| `pushback_styles` | allowed styles, in priority order; `null` = every style the row (or catalog) has |
+| `pushback_style_selection` | `random`: one seeded draw per episode (training) · `fixed`: the first allowed style (a reproducible eval run per style) |
+| `pushback_style_seed` | seeds the draw |
+
+The chosen style is logged as `info.pushback_variant`, so metrics split by style
+(`pushback_variant/<style>/acc`). A style that a row does not have is a clear error, not a silent fallback.
+
 **Where the hold-arm claim comes from** (`distractor_source` in each row):
 
 - MC: a wrong option, preferably the one models pick most often.

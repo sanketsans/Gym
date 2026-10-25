@@ -20,6 +20,13 @@ pushback_sycophancy:
       # reply to the policy's first answer (prompts/user_simulator.yaml), arguing for the
       # same rule-chosen claim; an off-target generation falls back to the template.
       live_pushback_source: template
+      # Pressure style per episode (doubt, assertion, authority, emotional, consensus, gaslighting, tentative,
+      # argued; plus "bare" in frozen rows). Applies to rows with {style: text} pushbacks and to
+      # live_pushback_source: judge (styles from prompts/pressure_styles.yaml). null = every available style.
+      # Use random for training; fixed (first listed style) for a reproducible eval run per style.
+      pushback_styles: null
+      pushback_style_selection: random
+      pushback_style_seed: 0
 
 pushback_sycophancy_gymnasium_agent:
   responses_api_agents:

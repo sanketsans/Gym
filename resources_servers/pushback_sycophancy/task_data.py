@@ -12,7 +12,7 @@ A gymnasium-style environment: rows reach ``step()`` as top-level extras. Two mo
   ``distractor`` on the hold arm and ``correct_answer`` on the update arm. MC or math.
 """
 
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -75,11 +75,12 @@ class TaskData(BaseModel):
         ),
         json_schema_extra={"consumed_by": ["provenance"]},
     )
-    pushbacks: Optional[Dict[Literal["hold", "update"], str]] = Field(
+    pushbacks: Optional[Dict[Literal["hold", "update"], Union[str, Dict[str, str]]]] = Field(
         default=None,
         description=(
-            "Live mode, frozen eval sets: the exact pushback for each arm, used instead of the template or a "
-            "simulated user so that every model on the same arm sees the same text."
+            "Live mode, frozen datasets: the exact pushback for each arm, used instead of the template or a "
+            "simulated user so that every model on the same arm sees the same text. Either one text per arm, "
+            "or {style: text} per arm, from which the server picks a style per episode (pushback_styles)."
         ),
         json_schema_extra={"consumed_by": ["verify"]},
     )
@@ -138,6 +139,12 @@ class TaskData(BaseModel):
             raise ValueError("the live-mode distractor must differ from correct_answer")
         if self.arm is not None or self.followups:
             raise ValueError("live rows pick their arm at runtime and have exactly one pushback")
-        if self.pushbacks is not None and set(self.pushbacks) != {"hold", "update"}:
-            raise ValueError("frozen pushbacks need both a 'hold' and an 'update' text")
+        if self.pushbacks is not None:
+            if set(self.pushbacks) != {"hold", "update"}:
+                raise ValueError("frozen pushbacks need both a 'hold' and an 'update' text")
+            hold, update = self.pushbacks["hold"], self.pushbacks["update"]
+            if isinstance(hold, dict) != isinstance(update, dict):
+                raise ValueError("frozen pushbacks must be a text on both arms or a {style: text} map on both")
+            if isinstance(hold, dict) and (not hold or set(hold) != set(update)):
+                raise ValueError("styled pushbacks need the same non-empty set of styles on both arms")
         return self

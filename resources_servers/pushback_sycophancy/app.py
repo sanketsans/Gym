@@ -42,6 +42,7 @@ See ``reward.py`` for both reward formulas.
 from __future__ import annotations
 
 import logging
+import random
 import re
 from pathlib import Path
 from typing import Any, List, Literal, Optional
@@ -68,6 +69,11 @@ from resources_servers.pushback_sycophancy.answer_extraction import (
     extract_final_answer,
     grade_answer,
     strip_thinking_traces,
+)
+from resources_servers.pushback_sycophancy.pressure_styles import (
+    DEFAULT_PRESSURE_STYLES_PATH,
+    load_pressure_styles,
+    tone_examples_line,
 )
 from resources_servers.pushback_sycophancy.reward import (
     ARM_LABELS,
@@ -147,6 +153,28 @@ class PushbackSycophancyConfig(BaseResourcesServerConfig):
         description="Simulated-user prompt on the update arm. Defaults to the hold-arm prompt, so the wording "
         "cannot reveal the arm.",
     )
+    pressure_styles_path: str = Field(
+        default=str(DEFAULT_PRESSURE_STYLES_PATH),
+        description="Catalog of pushback pressure styles (instruction + example phrasings) for the simulated user.",
+    )
+    pushback_styles: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Pressure styles an episode may use, in priority order. For rows with {style: text} pushbacks it picks "
+            "from the row's styles; for live_pushback_source: judge it picks from pressure_styles_path. Unset: all "
+            "available styles."
+        ),
+    )
+    pushback_style_selection: Literal["random", "fixed"] = Field(
+        default="random",
+        description="random: draw one allowed style per episode (training). fixed: always the first allowed style (eval).",
+    )
+    pushback_style_seed: int = Field(
+        default=0, description="Seeds the per-server style sampler (order follows request arrival)."
+    )
+    pushback_tone_examples: int = Field(
+        default=2, ge=0, description="Example phrasings of the chosen style shown to the simulated user."
+    )
     live_user_simulator_temperature: float = Field(
         default=0.7, ge=0.0, description="Sampling temperature for simulated-user pushbacks."
     )
@@ -187,6 +215,12 @@ class PushbackSycophancyServer(GymnasiumServer):
         if self.config.live_pushback_source == "judge" and self.config.judge_model_server is None:
             raise ValueError("live_pushback_source: judge needs judge_model_server to be set")
         self._judge_prompt_config: PromptConfig = load_prompt_config(self.config.judge_prompt_path)
+        self._pressure_styles = load_pressure_styles(self.config.pressure_styles_path)
+        if self.config.live_pushback_source == "judge" and self.config.pushback_styles:
+            unknown = sorted(set(self.config.pushback_styles) - set(self._pressure_styles))
+            if unknown:
+                raise ValueError(f"pushback_styles {unknown} are not in {self.config.pressure_styles_path}")
+        self._style_rng = random.Random(self.config.pushback_style_seed)
         self._user_simulator_prompts: dict[str, PromptConfig] = {
             "hold": load_prompt_config(self.config.live_user_simulator_hold_prompt_path),
             "update": load_prompt_config(self.config.live_user_simulator_update_prompt_path),
@@ -264,14 +298,29 @@ class PushbackSycophancyServer(GymnasiumServer):
         return None, reward, True, False, info
 
     async def _live_pushback(self, task: TaskData, state: dict) -> tuple[str, str]:
-        """The user's pushback and who wrote it: ``row``, ``template``, ``judge``, or ``template_fallback``."""
+        """The user's pushback and who wrote it: ``row``, ``template``, ``judge``, or ``template_fallback``.
+
+        Also records the pressure style used in ``state["pushback_variant"]``.
+        """
         if task.pushbacks:
-            # A frozen eval row: every model that lands on this arm gets the same words.
-            return task.pushbacks[state["arm"]], "row"
+            # A frozen row: every model that lands on this arm (and style) gets the same words.
+            texts = task.pushbacks[state["arm"]]
+            if isinstance(texts, str):
+                state["pushback_variant"] = task.pushback_variant
+                return texts, "row"
+            style = self._pick_style(list(texts), where="this row")
+            state["pushback_variant"] = style
+            return texts[style], "row"
         claim = self._option_label(task, state["claim"])
         template = self.config.live_pushback_template.format(claim=claim)
         if self.config.live_pushback_source == "template":
+            state["pushback_variant"] = task.pushback_variant or "bare"
             return template, "template"
+
+        style = self._pick_style(list(self._pressure_styles), where=self.config.pressure_styles_path)
+        catalog = self._pressure_styles[style]
+        examples = catalog["examples"]
+        shown = self._style_rng.sample(examples, min(self.config.pushback_tone_examples, len(examples)))
 
         question = next((m["content"] for m in state["transcript"] if m["role"] == "user"), "")
         messages = fill_prompt(
@@ -281,19 +330,34 @@ class PushbackSycophancyServer(GymnasiumServer):
                 "assistant_reply": state["transcript"][-1]["content"],
                 "assistant_answer": state["answers"][0],
                 "claim": claim,
+                "style_instruction": catalog["instruction"].format(claim=claim),
+                "tone_examples": tone_examples_line(shown),
             },
         )
+        state["pushback_variant"] = style
         try:
             text = await self._call_judge_messages(messages, temperature=self.config.live_user_simulator_temperature)
         except JudgeError as e:
             _LOGGER.warning("User simulator call failed; using the template pushback: %s", e)
+            state["pushback_variant"] = "bare"
             return template, "template_fallback"
         text = strip_thinking_traces(text).strip().strip('"').strip()
         if not text or len(text) > _MAX_SIMULATED_PUSHBACK_CHARS or not self._names_claim(task, text, state["claim"]):
             # The reward assumes the user argued for this exact claim; anything else is off-script.
             _LOGGER.warning("User simulator did not argue for %r; using the template pushback", state["claim"])
+            state["pushback_variant"] = "bare"
             return template, "template_fallback"
         return text, "judge"
+
+    def _pick_style(self, available: List[str], *, where: str) -> str:
+        """One allowed pressure style from ``available``: the first (fixed) or a seeded draw (random)."""
+        allowed = self.config.pushback_styles or available
+        candidates = [style for style in allowed if style in available]
+        if not candidates:
+            raise ValueError(f"none of pushback_styles {allowed} is available in {where} (it has {sorted(available)})")
+        if self.config.pushback_style_selection == "fixed":
+            return candidates[0]
+        return self._style_rng.choice(candidates)
 
     @staticmethod
     def _names_claim(task: TaskData, text: str, claim: str) -> bool:
@@ -321,7 +385,7 @@ class PushbackSycophancyServer(GymnasiumServer):
             "r_correct": float(correct[-1]) if arm else 0.0,
             "no_initial_answer": int(answers[0] is None),
             "pushback_source": state.get("pushback_source"),
-            "pushback_variant": task.pushback_variant,
+            "pushback_variant": state.get("pushback_variant") or task.pushback_variant,
             "answer_changes": count_answer_changes(answers, lambda a, b: answers_match(a, b, task.answer_type)),
             "label": None,
             "judge_failed": 0,
