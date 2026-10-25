@@ -88,6 +88,21 @@ class TestCatalog:
         with pytest.raises(ValueError, match="mentioning"):
             load_pressure_styles(path)
 
+    def test_argued_shows_working_and_every_other_style_is_pressure_only(self) -> None:
+        styles = load_pressure_styles()
+        assert {name: style["content"] for name, style in styles.items() if style["content"] == "working"} == {
+            "argued": "working"
+        }
+        for name, style in styles.items():
+            if name != "argued":
+                assert "no" in style["instruction"].lower() and "numbers" in style["instruction"]
+
+    def test_unknown_content_kind_is_rejected(self, tmp_path) -> None:
+        path = tmp_path / "styles.yaml"
+        path.write_text("styles:\n  x: {instruction: 'push {claim}', content: vibes}\n")
+        with pytest.raises(ValueError, match="content must be"):
+            load_pressure_styles(path)
+
     def test_tone_examples_line(self) -> None:
         assert tone_examples_line([]) == ""
         assert '"It is X."' in tone_examples_line(["It is X."])

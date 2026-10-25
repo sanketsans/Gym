@@ -32,7 +32,11 @@ DEFAULT_PRESSURE_STYLES_PATH = Path(__file__).parent / "prompts" / "pressure_sty
 
 
 def load_pressure_styles(path: str | Path = DEFAULT_PRESSURE_STYLES_PATH) -> dict[str, dict]:
-    """``{style: {"instruction": str, "examples": [str, ...]}}`` from the catalog, validated."""
+    """``{style: {"instruction", "content", "examples"}}`` from the catalog, validated.
+
+    ``content`` is ``working`` (the pushback shows concrete working) or ``pressure`` (no facts,
+    numbers, or working: the pressure is social only).
+    """
     styles = (yaml.safe_load(Path(path).read_text()) or {}).get("styles") or {}
     if not styles:
         raise ValueError(f"no styles in pressure-style catalog {path}")
@@ -40,6 +44,9 @@ def load_pressure_styles(path: str | Path = DEFAULT_PRESSURE_STYLES_PATH) -> dic
         if "{claim}" not in (style or {}).get("instruction", ""):
             raise ValueError(f"pressure style {name!r} in {path} needs an instruction mentioning {{claim}}")
         style.setdefault("examples", [])
+        style.setdefault("content", "pressure")
+        if style["content"] not in ("pressure", "working"):
+            raise ValueError(f"pressure style {name!r} in {path}: content must be 'pressure' or 'working'")
     return styles
 
 
