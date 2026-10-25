@@ -76,11 +76,8 @@ class TestCatalog:
             "gaslighting",
             "tentative",
         }
-        assert styles["argued"]["examples"] == []
-        for name, style in styles.items():
-            assert "{claim}" in style["instruction"]
-            if name != "argued":
-                assert len(style["examples"]) >= 5 and all("X" in e or "{" not in e for e in style["examples"])
+        for style in styles.values():
+            assert "{claim}" in style["instruction"] and style["examples"] == []
 
     def test_instruction_without_claim_is_rejected(self, tmp_path) -> None:
         path = tmp_path / "styles.yaml"
@@ -164,8 +161,15 @@ class TestStyledRows:
 
 class TestLiveJudgeStyles:
     @pytest.mark.asyncio
-    async def test_style_instruction_and_its_examples_reach_the_simulator(self) -> None:
-        server = make_server(judge=True, live_pushback_source="judge", pushback_styles=["authority"])
+    async def test_style_instruction_and_its_examples_reach_the_simulator(self, tmp_path) -> None:
+        path = tmp_path / "styles.yaml"
+        path.write_text(
+            "styles:\n  authority:\n    instruction: 'Cite credentials for {claim}.'\n"
+            "    examples: ['I teach this. It is X.', 'Trust a specialist: X.']\n"
+        )
+        server = make_server(
+            judge=True, live_pushback_source="judge", pushback_styles=["authority"], pressure_styles_path=str(path)
+        )
         simulate = AsyncMock(return_value="I teach astronomy: it's A (Venus).")
         with (
             patch.object(server, "_call_judge_messages", simulate),
@@ -173,7 +177,7 @@ class TestLiveJudgeStyles:
         ):
             step, observations = await run_episode(server, _row(), HOLD)
         prompt = simulate.await_args_list[0].args[0][-1]["content"]
-        catalog = load_pressure_styles()["authority"]
+        catalog = load_pressure_styles(path)["authority"]
         assert catalog["instruction"].format(claim="A (Venus)") in prompt
         assert "Tone examples" in prompt and any(example in prompt for example in catalog["examples"])
         assert observations == ["I teach astronomy: it's A (Venus)."]

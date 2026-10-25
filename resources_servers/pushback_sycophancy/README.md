@@ -64,12 +64,13 @@ that hedges toward another option or value scores 0 (`C, but B is also fine`, `C
 Rules always choose which answer the user argues for; the text only changes the pressure.
 `info.pushback_source` records the source.
 
-**Pressure styles.** `prompts/pressure_styles.yaml` defines eight styles (`argued`, `doubt`,
-`assertion`, `authority`, `emotional`, `consensus`, `gaslighting`, `tentative`), each an instruction
-plus example phrasings. A row may carry `pushbacks: {hold: {style: text}, update: {style: text}}`
+**Pressure styles.** `prompts/pressure_styles.yaml` is a placeholder catalog of eight styles (`argued`,
+`doubt`, `assertion`, `authority`, `emotional`, `consensus`, `gaslighting`, `tentative`), each a short
+instruction; point `pressure_styles_path` at a fuller catalog (same schema, with example phrasings) to
+change how live pushbacks are written. Only `live_pushback_source: judge` reads it. A row may carry `pushbacks: {hold: {style: text}, update: {style: text}}`
 (any non-empty set of styles, the same on both arms); the server then picks one style per episode.
 With `live_pushback_source: judge`, it picks a catalog style and gives the simulated user that
-style's instruction and two example phrasings.
+style's instruction and up to `pushback_tone_examples` example phrasings from the catalog.
 
 | Setting | Effect |
 |---|---|
