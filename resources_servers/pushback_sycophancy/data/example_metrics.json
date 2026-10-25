@@ -39,10 +39,6 @@
         "Max": 0.0,
         "Standard deviation": 0.0
     },
-    "mode": {
-        "unique_count": 1,
-        "total_count": 5
-    },
     "answer_type": {
         "unique_count": 2,
         "total_count": 5

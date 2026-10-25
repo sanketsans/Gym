@@ -1,4 +1,4 @@
-# Simulated-user prompt for live mode with live_pushback_source: judge.
+# Simulated-user prompt for live_pushback_source: judge.
 #
 # The judge model writes the user's single pushback, reacting to the policy's
 # turn-0 reply. Which answer the user argues for ({claim}) is decided by rules:

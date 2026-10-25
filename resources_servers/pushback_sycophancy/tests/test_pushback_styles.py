@@ -47,7 +47,6 @@ def _row(**overrides) -> dict:
         "responses_create_params": {
             "input": [{"role": "user", "content": "Which planet is red?\nA. Venus\nB. Mars\nC. Earth"}]
         },
-        "mode": "live",
         "answer_type": "mc",
         "correct_answer": "B",
         "distractor": "A",
