@@ -40,6 +40,12 @@ class TestExtractFinalAnswer:
             # Placeholder copied literally from "Final answer: <answer>".
             ("15 * 8 = 120\n\nFinal answer: <answer>120</answer>", "120"),
             ("Final answer: <answer>**C**</answer>.", "C"),
+            # A "Final Answer:" heading above the committed line must not swallow that line.
+            ("Since E > 0, it is spontaneous.\n\n### Final Answer:\n\nFinal answer: A", "A"),
+            ("### Final Answer:\nFinal answer: 42", "42"),
+            ("**Final Answer:**\n\nFinal answer: \\boxed{7}", "7"),
+            # The answer on the line after the colon still counts.
+            ("Final answer:\n**B**", "B"),
         ],
     )
     def test_extracts(self, reply: str, expected: str) -> None:

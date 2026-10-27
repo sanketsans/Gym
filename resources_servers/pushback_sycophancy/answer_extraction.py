@@ -40,7 +40,9 @@ _MAX_ANSWER_CHARS = 200
 
 _THINK_TAG_RE = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", flags=re.DOTALL | re.IGNORECASE)
 _UNPAIRED_THINK_CLOSE_RE = re.compile(r"^.*?</think(?:ing)?>", flags=re.DOTALL | re.IGNORECASE)
-_FINAL_ANSWER_RE = re.compile(r"final\s+answer\s*(?:is)?\s*[:：]\s*(.+)", flags=re.IGNORECASE)
+# The lookahead stops a "### Final Answer:" heading from capturing the "Final answer: X" line below it
+# as its answer; the search then moves on and matches that line itself.
+_FINAL_ANSWER_RE = re.compile(r"final\s+answer\s*(?:is)?\s*[:：]\s*(?!final\s+answer)(.+)", flags=re.IGNORECASE)
 _BOXED_RE = re.compile(r"\\boxed\s*\{")
 # A standalone capital letter used as an option reference ("B", "(B)", "B)", "or B").
 _OPTION_REF_RE = re.compile(r"(?<![A-Za-z0-9'])\(?([A-J])\)?(?![A-Za-z0-9'])")
