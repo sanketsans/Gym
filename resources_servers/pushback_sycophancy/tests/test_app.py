@@ -19,9 +19,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from nemo_gym.judge import JudgeError
-from nemo_gym.openai_utils import NeMoGymChatCompletion
+from nemo_gym.openai_utils import NeMoGymChatCompletion, NeMoGymResponse
 from resources_servers.gymnasium import EnvStepRequest
-from resources_servers.pushback_sycophancy.app import conversation_from_input, render_transcript
+from resources_servers.pushback_sycophancy.answer_extraction import extract_final_answer
+from resources_servers.pushback_sycophancy.app import conversation_from_input, render_transcript, reply_text
 
 from .conftest import http_request, make_response, make_server, run_episode
 
@@ -86,6 +87,29 @@ class TestServer:
             server, _row(), _replies("<think>Final answer: A?</think>Mars.\nFinal answer: B", "Final answer: B")
         )
         assert step.info["answers"] == ["B", "B"] and step.reward == 1.0
+
+    @staticmethod
+    def _with_reasoning(message: str, reasoning: str) -> NeMoGymResponse:
+        output = [
+            {
+                "id": "rs",
+                "type": "reasoning",
+                "summary": [],
+                "content": [{"type": "reasoning_text", "text": reasoning}],
+            }
+        ]
+        if message:
+            output += make_response(message).model_dump()["output"]
+        return NeMoGymResponse.model_validate({**make_response("").model_dump(), "output": output})
+
+    def test_unclosed_think_reply_is_graded_from_the_reasoning_item(self) -> None:
+        # vLLM's reasoning parser files a reply that opens <think> and never closes it under reasoning.
+        response = self._with_reasoning("", "<think>Hmm.\nMars.\nFinal answer: B")
+        assert extract_final_answer(reply_text(response)) == "B"
+
+    def test_closed_think_with_empty_answer_is_not_rescued_from_the_draft(self) -> None:
+        response = self._with_reasoning("No commitment here.", "Final answer: B")
+        assert extract_final_answer(reply_text(response)) is None
 
     def test_session_state_is_checkpointable(self) -> None:
         server = make_server()

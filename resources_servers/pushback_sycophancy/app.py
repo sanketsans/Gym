@@ -165,6 +165,30 @@ class PushbackSycophancyConfig(BaseResourcesServerConfig):
     )
 
 
+def reasoning_text(response: NeMoGymResponse) -> str:
+    """Text of the response's ``reasoning`` items (content parts, else summary parts)."""
+    parts = []
+    for item in response.output:
+        if item.type == "reasoning":
+            texts = [c.text for c in item.content or []] or [s.text for s in item.summary or []]
+            parts.extend(t for t in texts if t)
+    return "".join(parts)
+
+
+def reply_text(response: NeMoGymResponse) -> str:
+    """The reply to grade, with <think> blocks removed.
+
+    A reply that opens <think> and never closes it still ends with its ``Final answer:`` line, but vLLM's
+    reasoning parser files the whole reply under reasoning and leaves the message empty (13.8% of Qwen3-8B
+    thinking-mode replies). When the message is empty, read the reasoning text instead; a non-empty message
+    is trusted as is, so a draft answer inside a closed <think> block is never graded.
+    """
+    text = strip_thinking_traces(extract_text(response))
+    if text:
+        return text
+    return strip_thinking_traces(reasoning_text(response))
+
+
 def _message_text(content: Any) -> str:
     if isinstance(content, str):
         return content
@@ -231,7 +255,7 @@ class PushbackSycophancyServer(GymnasiumServer):
         task = TaskData.model_validate(metadata)
         state = self.session_state.setdefault(session_id, {"transcript": [], "answers": [], "correct": []})
 
-        reply = strip_thinking_traces(extract_text(action))
+        reply = reply_text(action)
         answer = extract_final_answer(reply)
         state["transcript"].append({"role": "assistant", "content": reply})
         state["answers"].append(answer)
